@@ -6,7 +6,10 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import App from './App';
+import { AdminApp } from './admin/AdminApp';
+import { ContentProvider } from './context/ContentContext';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -16,6 +19,14 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <App />
+    <BrowserRouter>
+      <ContentProvider>
+        <Routes>
+          <Route path="/" element={<App />} />
+          <Route path="/admin" element={<AdminApp />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </ContentProvider>
+    </BrowserRouter>
   </React.StrictMode>
 );
