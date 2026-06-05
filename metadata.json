@@ -1,0 +1,6 @@
+{
+  "name": "Remix: Shader Pilot",
+  "description": "An interactive, 3D scroll-driven startup portfolio with real-time procedural audio and customizable WebGL environments.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
