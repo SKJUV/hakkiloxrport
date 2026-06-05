@@ -331,6 +331,10 @@ export const useAppStore = (): Omit<AppContextType, keyof ReturnType<typeof useD
   const prevScrollProgressRef = useRef(0);
   const smoothScrollVelocityRef = useRef(0);
 
+  // "Liberté contrôlée": position du pointeur normalisée (-1..1) pour incliner
+  // la caméra de ~30° autour de la zone active sans quitter les rails.
+  const pointerRef = useRef({ x: 0, y: 0 });
+
   const defaultUniformsRef = useRef<{ [key: string]: number }>({});
   
   const terraform_currentVelocity = useRef<{ [key: string]: number }>({});
@@ -1137,6 +1141,24 @@ export const useAppStore = (): Omit<AppContextType, keyof ReturnType<typeof useD
     collisionThresholdYellowRef.current = collisionThresholdYellow;
   }, [collisionThresholdRed, collisionThresholdYellow]);
 
+  // Track pointer for the "controlled freedom" camera pan (rails mode only)
+  useEffect(() => {
+    const handlePointer = (clientX: number, clientY: number) => {
+        pointerRef.current.x = (clientX / window.innerWidth) * 2 - 1;
+        pointerRef.current.y = (clientY / window.innerHeight) * 2 - 1;
+    };
+    const onMouseMove = (e: MouseEvent) => handlePointer(e.clientX, e.clientY);
+    const onTouchMove = (e: TouchEvent) => {
+        if (e.touches.length > 0) handlePointer(e.touches[0].clientX, e.touches[0].clientY);
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('touchmove', onTouchMove, { passive: true });
+    return () => {
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('touchmove', onTouchMove);
+    };
+  }, []);
+
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
         // Prevent game controls when typing in input fields
@@ -1195,9 +1217,15 @@ export const useAppStore = (): Omit<AppContextType, keyof ReturnType<typeof useD
             const targetY = INITIAL_CAMERA_POS[1] + Math.sin(progress * Math.PI * 2.0) * 0.8 + (progress * 0.4);
 
             // Cinematic rotation: camera turns gracefully as it flows along curves
-            const targetYaw = INITIAL_CAMERA_ROT[1] + Math.cos(progress * Math.PI * 4.0) * 0.25 + (Math.sin(progress * Math.PI * 1.5) * 0.15);
-            const targetPitch = INITIAL_CAMERA_ROT[0] + Math.sin(progress * Math.PI * 4.0) * 0.08;
-            const targetRoll = Math.cos(progress * Math.PI * 4.0) * 0.12;
+            // "Liberté contrôlée": on ajoute un offset piloté par le pointeur (~30° de lacet,
+            // ~15° de tangage) pour regarder autour de la zone active sans casser les rails.
+            const PAN_YAW = 0.52;   // ≈ 30°
+            const PAN_PITCH = 0.26; // ≈ 15°
+            const px = pointerRef.current.x;
+            const py = pointerRef.current.y;
+            const targetYaw = INITIAL_CAMERA_ROT[1] + Math.cos(progress * Math.PI * 4.0) * 0.25 + (Math.sin(progress * Math.PI * 1.5) * 0.15) + px * PAN_YAW;
+            const targetPitch = INITIAL_CAMERA_ROT[0] + Math.sin(progress * Math.PI * 4.0) * 0.08 + py * PAN_PITCH;
+            const targetRoll = Math.cos(progress * Math.PI * 4.0) * 0.12 - px * 0.05;
 
             // Interpolate camera to the scroll path targets smoothly
             cameraRef.current.position[0] += (targetX - cameraRef.current.position[0]) * 0.12;

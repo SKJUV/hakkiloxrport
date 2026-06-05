@@ -54,14 +54,49 @@ const AppContent: React.FC = () => {
     const [isLinkCopied, setIsLinkCopied] = useState(false);
     const scrollContainerRef = React.useRef<HTMLDivElement>(null);
 
+    // "Point d'Accroche / Sticky Scroll": ancres magnétiques sur les moments-clés
+    // (fiche produit boutique ~30%, île de cours e-learning ~56%). Quand l'utilisateur
+    // s'arrête à proximité, on aimante doucement la caméra vers le point d'intérêt.
+    const SNAP_ANCHORS = React.useRef([0.30, 0.56]).current;
+    const SNAP_RADIUS = 0.045;
+    const scrollIdleTimerRef = React.useRef<number | null>(null);
+    const lastScrollTopRef = React.useRef(0);
+    const lastScrollTimeRef = React.useRef(0);
+
     const handleScroll = useCallback(() => {
         if (!scrollContainerRef.current) return;
-        const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+        const el = scrollContainerRef.current;
+        const { scrollTop, scrollHeight, clientHeight } = el;
         const totalScrollable = scrollHeight - clientHeight;
         if (totalScrollable <= 0) return;
         const percent = Math.min(1.0, Math.max(0.0, scrollTop / totalScrollable));
         setPortfolioScroll(percent);
-    }, [setPortfolioScroll]);
+
+        // Estimate scroll velocity to avoid fighting a fast "molette forte"
+        const now = performance.now();
+        const dt = Math.max(1, now - lastScrollTimeRef.current);
+        const velocity = Math.abs(scrollTop - lastScrollTopRef.current) / dt; // px/ms
+        lastScrollTopRef.current = scrollTop;
+        lastScrollTimeRef.current = now;
+
+        if (scrollIdleTimerRef.current !== null) {
+            window.clearTimeout(scrollIdleTimerRef.current);
+        }
+        // Only assist when the user has slowed down (gentle easing into the key moment)
+        if (velocity > 1.4) return;
+        scrollIdleTimerRef.current = window.setTimeout(() => {
+            const current = el.scrollTop / totalScrollable;
+            let nearest: number | null = null;
+            let nearestDist = SNAP_RADIUS;
+            for (const anchor of SNAP_ANCHORS) {
+                const d = Math.abs(current - anchor);
+                if (d < nearestDist) { nearest = anchor; nearestDist = d; }
+            }
+            if (nearest !== null && nearestDist > 0.0015) {
+                el.scrollTo({ top: nearest * totalScrollable, behavior: 'smooth' });
+            }
+        }, 150);
+    }, [setPortfolioScroll, SNAP_ANCHORS]);
 
     const handleShareClick = useCallback(() => {
         const params: Record<string, string | number> = {
@@ -189,10 +224,11 @@ const AppContent: React.FC = () => {
             {/* Transparent Scroll Interlocking Container overlay */}
             {!devMode && (
                 <div 
+                    id="ar-scroll-rail"
                     ref={scrollContainerRef}
                     onScroll={handleScroll}
                     className="fixed inset-0 overflow-y-auto z-20 pointer-events-auto select-none font-sans scrollbar-none"
-                    style={{ scrollbarWidth: 'none' }}
+                    style={{ scrollbarWidth: 'none', scrollBehavior: 'smooth' }}
                 >
                     <div className="h-[600vh] w-full pointer-events-none" />
                 </div>
