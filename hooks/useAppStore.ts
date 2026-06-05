@@ -243,10 +243,16 @@ const SCALES = {
 
 const mtof = (note: number) => 440 * Math.pow(2, (note - 69) / 12);
 
-// Calibrated starting position for Planet 1 "true horizon" at -1.49
-const INITIAL_CAMERA_POS: [number, number, number] = [0, -1.49, 0];
-// Start with a level camera view, compensated for FLIGHT_PITCH_OFFSET
-const INITIAL_CAMERA_ROT: [number, number] = [0.1, 0.0];
+// Parcours "cycliste" : la caméra est à hauteur d'yeux au-dessus du sol (y=0),
+// le regard quasi à l'horizontale.
+const INITIAL_CAMERA_POS: [number, number, number] = [0, 1.6, 0];
+const INITIAL_CAMERA_ROT: [number, number] = [0.02, 0.0];
+
+// Géométrie de la route (doit rester synchronisée avec le shader de la scène).
+const ROAD_X = (z: number) => 7.0 * Math.sin(z * 0.045) + 3.5 * Math.sin(z * 0.045 * 0.37);
+const ROAD_SLOPE = (z: number) =>
+  7.0 * 0.045 * Math.cos(z * 0.045) + 3.5 * 0.045 * 0.37 * Math.cos(z * 0.045 * 0.37);
+const PATH_LENGTH = 90.0;
 
 export const useAppStore = (): Omit<AppContextType, keyof ReturnType<typeof useDummyHandlers>> => {
   const [activeShaderCode, setActiveShaderCode] = useState<string>('');
@@ -1206,35 +1212,34 @@ export const useAppStore = (): Omit<AppContextType, keyof ReturnType<typeof useD
         const proposedPos = tempProposedPosRef.current;
 
         if (!devMode) {
-            // --- Cinematic Scroll Path Setup ---
-            const progress = portfolioScroll; // Normalized 0.0 to 1.0
+            // --- Balade cycliste sur rails ---
+            const progress = portfolioScroll; // 0.0 à 1.0
 
-            // Track forward along Z axis
-            const targetZ = INITIAL_CAMERA_POS[2] + progress * 60.0;
-            // Winding S-curve along X axis
-            const targetX = INITIAL_CAMERA_POS[0] + Math.sin(progress * Math.PI * 4.0) * 3.5;
-            // Altitude dips and climbs
-            const targetY = INITIAL_CAMERA_POS[1] + Math.sin(progress * Math.PI * 2.0) * 0.8 + (progress * 0.4);
+            // Avance le long de la route, qui serpente doucement en X.
+            const z = progress * PATH_LENGTH;
+            const targetZ = z;
+            const targetX = ROAD_X(z);
+            const targetY = INITIAL_CAMERA_POS[1] + Math.sin(progress * Math.PI * 6.0) * 0.06; // léger ballant
 
-            // Cinematic rotation: camera turns gracefully as it flows along curves
-            // "Liberté contrôlée": on ajoute un offset piloté par le pointeur (~30° de lacet,
-            // ~15° de tangage) pour regarder autour de la zone active sans casser les rails.
-            const PAN_YAW = 0.52;   // ≈ 30°
-            const PAN_PITCH = 0.26; // ≈ 15°
+            // "Liberté contrôlée" : on regarde le long de la route (tangente) + offset au pointeur.
+            const PAN_YAW = 0.5;    // ≈ 28°
+            const PAN_PITCH = 0.22; // ≈ 13°
             const px = pointerRef.current.x;
             const py = pointerRef.current.y;
-            const targetYaw = INITIAL_CAMERA_ROT[1] + Math.cos(progress * Math.PI * 4.0) * 0.25 + (Math.sin(progress * Math.PI * 1.5) * 0.15) + px * PAN_YAW;
-            const targetPitch = INITIAL_CAMERA_ROT[0] + Math.sin(progress * Math.PI * 4.0) * 0.08 + py * PAN_PITCH;
-            const targetRoll = Math.cos(progress * Math.PI * 4.0) * 0.12 - px * 0.05;
+            const slope = ROAD_SLOPE(z);
+            const targetYaw = Math.atan(slope) + px * PAN_YAW;
+            const targetPitch = INITIAL_CAMERA_ROT[0] + py * PAN_PITCH;
+            const targetRoll = -slope * 0.12 - px * 0.04; // inclinaison douce dans les virages
 
-            // Interpolate camera to the scroll path targets smoothly
-            cameraRef.current.position[0] += (targetX - cameraRef.current.position[0]) * 0.12;
-            cameraRef.current.position[1] += (targetY - cameraRef.current.position[1]) * 0.12;
-            cameraRef.current.position[2] += (targetZ - cameraRef.current.position[2]) * 0.12;
+            // Interpolation lente et chill vers la cible.
+            const EASE = 0.08;
+            cameraRef.current.position[0] += (targetX - cameraRef.current.position[0]) * EASE;
+            cameraRef.current.position[1] += (targetY - cameraRef.current.position[1]) * EASE;
+            cameraRef.current.position[2] += (targetZ - cameraRef.current.position[2]) * EASE;
 
-            cameraRef.current.rotation[0] += (targetPitch - cameraRef.current.rotation[0]) * 0.12;
-            cameraRef.current.rotation[1] += (targetYaw - cameraRef.current.rotation[1]) * 0.12;
-            cameraRollRef.current += (targetRoll - cameraRollRef.current) * 0.12;
+            cameraRef.current.rotation[0] += (targetPitch - cameraRef.current.rotation[0]) * EASE;
+            cameraRef.current.rotation[1] += (targetYaw - cameraRef.current.rotation[1]) * EASE;
+            cameraRollRef.current += (targetRoll - cameraRollRef.current) * EASE;
             cameraRef.current.roll = cameraRollRef.current;
 
             proposedPos[0] = cameraRef.current.position[0];
@@ -1285,10 +1290,11 @@ export const useAppStore = (): Omit<AppContextType, keyof ReturnType<typeof useD
             proposedPos[2] = currentPos[2] + cameraVelocityRef.current[2] * dt;
         }
 
-        // Collision (Planet 1 only)
+        // Collision désactivée : la scène cycliste est ouverte (plus de bâtiments).
+        const COLLISION_ENABLED = false as boolean;
         let newState: 'none' | 'approaching' | 'colliding' = 'none';
         let newProximity = 0;
-        if (sessionId === '1') {
+        if (COLLISION_ENABLED) {
              const dist = getPlanet1Distance(proposedPos, currentUniforms, accumulatedTimeRef.current);
              if (dist < collisionThresholdRedRef.current) {
                  newState = 'colliding';

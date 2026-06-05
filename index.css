@@ -106,6 +106,22 @@ code, pre, .font-mono {
   animation: ar-wheel-hint 1.8s ease-in-out infinite;
 }
 
+/* Immersion : entrée cinématique du panneau détaillé (zoom doux) */
+@keyframes ar-immersion-in {
+  from { opacity: 0; transform: scale(1.06) translateY(10px); filter: blur(6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); }
+}
+.ar-immersion-in {
+  animation: ar-immersion-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes ar-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.ar-fade-in {
+  animation: ar-fade-in 0.4s ease-out forwards;
+}
+
 /* Flux des tirets de la ligne directrice au sol (SVG) */
 @keyframes ar-dash-stream {
   to { stroke-dashoffset: -40; }

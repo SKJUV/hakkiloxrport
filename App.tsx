@@ -14,6 +14,7 @@ import { ShipOverlay } from './components/ShipOverlay';
 import { AppProvider, useAppContext } from './context/AppContext';
 import { useAppStoreComplete } from './hooks/useAppStore';
 import { PortfolioOverlay } from './components/PortfolioOverlay';
+import { useContent } from './context/ContentContext';
 import { GearIcon, SpeakerWaveIcon, SpeakerXMarkIcon, RocketLaunchIcon } from './components/Icons';
 import { SHOW_SETTINGS_BUTTON, SHOW_SHARE_BUTTON, SHOW_HUD_BUTTON, SHOW_MUTE_BUTTON } from './config';
 
@@ -54,10 +55,14 @@ const AppContent: React.FC = () => {
     const [isLinkCopied, setIsLinkCopied] = useState(false);
     const scrollContainerRef = React.useRef<HTMLDivElement>(null);
 
-    // "Point d'Accroche / Sticky Scroll": ancres magnétiques sur les moments-clés
-    // (fiche produit boutique ~30%, île de cours e-learning ~56%). Quand l'utilisateur
-    // s'arrête à proximité, on aimante doucement la caméra vers le point d'intérêt.
-    const SNAP_ANCHORS = React.useRef([0.30, 0.56]).current;
+    // "Point d'Accroche / Sticky Scroll": ancres magnétiques dérivées des étapes
+    // intérieures du parcours (CMS). Quand l'utilisateur s'arrête à proximité,
+    // on aimante doucement la caméra vers le point d'intérêt.
+    const content = useContent();
+    const SNAP_ANCHORS = React.useMemo(
+        () => content.journey.slice(1, -1).map((s) => s.center),
+        [content.journey],
+    );
     const SNAP_RADIUS = 0.045;
     const scrollIdleTimerRef = React.useRef<number | null>(null);
     const lastScrollTopRef = React.useRef(0);

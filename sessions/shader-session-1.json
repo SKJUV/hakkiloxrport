@@ -1,101 +1,59 @@
-
 {
   "sessionId": "1",
-  "shaderCode": "vec3 a=vec3(1,0,0),q,p=u_cameraPosition;vec2 centered_uv=FC.xy*2.-r;float rollAngle=u_cameraRoll;mat2 rollMat=mat2(cos(rollAngle),-sin(rollAngle),sin(rollAngle),cos(rollAngle));centered_uv=rollMat*centered_uv;vec3 v=vec3(centered_uv/slider_zoom,r.y);v=rotate3D(u_cameraRotation.y,a.yxy)*v;vec3 camRight=normalize(cross(a.yxy,v));v=rotate3D(slider_cameraXRotation+u_cameraRotation.x,camRight)*v;vec3 rd=normalize(v);for(float d,i,l;l++<slider_maxIterations;p-=rd*d)for(q=p,d=-q.y,i=58.;i>.05;i*=slider_fractalScale)d=max(d,min(min(q=i*.9-abs(mod(rotate3D(slider_fractalRotation + sin(t*1.+q.y*5.)*slider_fractalPulseStrength,a.zxz)*q,i+i)-i),q.y).x,q.z)),l>1e2?(d+=1e-5,v/=v,o):(o.rgb+=max(5e-4-d*d,0.)*((mix(vec3(0.04, 0.45, 0.95), vec3(0.85, 0.05, 0.75), sin(l*0.08+t*0.2)*0.5+0.5) * (1.2 + slider_colorEffectStrength * 1.8)) + vec3(0.0, 0.95, 0.85) * (smoothstep(0.9, 1.0, cos(p.x*1.5)) + smoothstep(0.9, 1.0, cos(p.z*1.5))) * step(abs(p.y), 0.1) * 0.4),o);o*=log(7.-p.y)*.1;o.rgb*=slider_brightness;vec3 sunDir=normalize(vec3(0.,slider_sunElevation,1.));float sunDot=max(0.,dot(rd,sunDir));vec3 sky=mix(vec3(0.05,0.01,0.12),vec3(0.01,0.01,0.03),clamp(rd.y*.8+.2,0.,1.));sky+=vec3(0.8,0.4,0.9)*pow(sunDot,10.)*2.0;float dist=length(u_cameraPosition-p);float fog=1.-exp(-dist*slider_atmosphereDensity*.01);o.rgb=mix(o.rgb,sky*slider_brightness,fog);o.rgb+=vec3(1.0,0.9,0.5)*smoothstep(.995,1.,sunDot)*10.*slider_brightness*smoothstep(50.,500.,dist);",
+  "shaderCode": "\nvec2 uv=(FC.xy-0.5*r)/r.y;\nfloat rl=u_cameraRoll;\nuv=mat2(cos(rl),-sin(rl),sin(rl),cos(rl))*uv;\nvec3 ro=u_cameraPosition;\nvec3 rd=normalize(vec3(uv,slider_zoom));\nrd=rotate3D(u_cameraRotation.x,vec3(1.0,0.0,0.0))*rd;\nrd=rotate3D(u_cameraRotation.y,vec3(0.0,1.0,0.0))*rd;\n\nvec3 zenith=vec3(0.55,0.71,0.92);\nvec3 horizon=vec3(0.99,0.86,0.79);\nfloat skyT=clamp(rd.y*1.25+0.18,0.0,1.0);\nvec3 sky=mix(horizon,zenith,skyT);\nvec3 sunDir=normalize(vec3(0.18,slider_sunElevation,1.0));\nfloat sun=max(dot(rd,sunDir),0.0);\nsky+=vec3(1.0,0.93,0.82)*pow(sun,60.0)*0.7;\nsky+=vec3(1.0,0.9,0.8)*pow(sun,5.0)*0.10;\nfloat cl=smoothstep(0.55,0.85,sin(rd.x*3.0+t*0.03)*0.5+0.5)*smoothstep(0.02,0.32,rd.y);\nsky=mix(sky,vec3(1.0,0.99,0.98),cl*0.22);\n\nvec3 col=sky;\nif(rd.y<-0.002){\n  float tg=-ro.y/rd.y;\n  if(tg>0.0&&tg<400.0){\n    vec3 pos=ro+rd*tg;\n    float z=pos.z;\n    float roadX=7.0*sin(z*0.045)+3.5*sin(z*0.045*0.37);\n    float dRoad=abs(pos.x-roadX);\n    float road=1.0-smoothstep(2.0,2.7,dRoad);\n    float hills=0.5+0.5*sin(pos.z*0.07)*sin(pos.x*0.045);\n    vec3 grass=mix(vec3(0.60,0.74,0.57),vec3(0.72,0.82,0.63),hills);\n    vec3 roadCol=vec3(0.91,0.87,0.81);\n    float dash=step(0.55,fract(z*0.45));\n    float centerLine=(1.0-smoothstep(0.10,0.2,abs(pos.x-roadX)))*dash;\n    vec3 g=mix(grass,roadCol,road);\n    g=mix(g,vec3(0.99,0.96,0.74),centerLine*0.55);\n    float edge=(1.0-smoothstep(2.7,3.1,dRoad))*(smoothstep(2.0,2.7,dRoad));\n    g=mix(g,vec3(0.80,0.90,0.95),edge*0.25*slider_colorEffectStrength);\n    col=g;\n    float fog=1.0-exp(-tg*slider_atmosphereDensity*0.035);\n    col=mix(col,sky,clamp(fog,0.0,1.0));\n  }\n}\ncol*=slider_brightness;\ncol=clamp(col,0.0,1.0);\no=vec4(col,1.0);\n",
   "sliders": [
     {
-      "name": "Zoom Level",
-      "description": "Adjusts the overall zoom level of the scene. Lower values zoom in, higher values zoom out.",
+      "name": "Focale (champ de vision)",
       "variableName": "slider_zoom",
-      "min": 0,
-      "max": 5,
-      "step": 0.05,
-      "defaultValue": 2.75
-    },
-    {
-      "name": "Fractal Scale",
-      "description": "Controls the self-similarity scaling factor of the fractal iterations. A smaller value makes the fractal zoom in more with each step.",
-      "variableName": "slider_fractalScale",
-      "min": 0,
-      "max": 0.6,
+      "min": 0.6,
+      "max": 2.5,
       "step": 0.01,
-      "defaultValue": 0.37
+      "defaultValue": 1.2,
+      "description": "Ouverture de la vue (plus petit = plus large)."
     },
     {
-      "name": "Fractal Rotation",
-      "description": "Adjusts the internal rotation applied to fractal components in each iteration, affecting the fractal's overall structure and repetition.",
-      "variableName": "slider_fractalRotation",
-      "min": 0,
-      "max": 2,
-      "step": 0.01,
-      "defaultValue": 1.09
-    },
-    {
-      "name": "Max Iterations",
-      "description": "Controls the maximum number of steps the raymarcher takes. Increase this if distant objects are getting cut off.",
-      "variableName": "slider_maxIterations",
-      "min": 10,
-      "max": 500,
-      "step": 1,
-      "defaultValue": 115
-    },
-    {
-      "name": "Brightness",
-      "description": "Adjusts the overall brightness of the scene.",
+      "name": "Luminosité",
       "variableName": "slider_brightness",
-      "min": 0,
-      "max": 5,
+      "min": 0.5,
+      "max": 2.0,
       "step": 0.01,
-      "defaultValue": 3.51
+      "defaultValue": 1.05,
+      "description": "Luminosité générale de la scène."
     },
     {
-      "name": "Color Dynamic Strength",
-      "description": "Adjusts the intensity of the dynamic color effect based on raymarching iteration count and time.",
-      "variableName": "slider_colorEffectStrength",
-      "min": 0,
-      "max": 5,
-      "step": 0.05,
-      "defaultValue": 1.9
-    },
-    {
-      "name": "Fractal Pulse Strength",
-      "description": "Controls the amplitude of the time-varying twist applied to the fractal's internal geometry along the Y-axis. Higher values result in a more intense pulsating and stretching effect.",
-      "variableName": "slider_fractalPulseStrength",
-      "min": 0,
-      "max": 1,
-      "step": 0.01,
-      "defaultValue": 0
-    },
-    {
-      "name": "Atmosphere Density",
-      "description": "Controls the thickness of the distance fog, blending distant structures into the sunset sky color.",
+      "name": "Brume",
       "variableName": "slider_atmosphereDensity",
-      "min": 0,
-      "max": 10,
-      "step": 0.1,
-      "defaultValue": 0.08
+      "min": 0.0,
+      "max": 1.0,
+      "step": 0.01,
+      "defaultValue": 0.35,
+      "description": "Densité de la brume atmosphérique douce."
     },
     {
-      "name": "Sun Elevation",
-      "description": "Controls the height of the sun in the sky, changing the atmosphere from day to sunset to night.",
+      "name": "Hauteur du soleil",
       "variableName": "slider_sunElevation",
-      "min": -0.2,
-      "max": 1,
+      "min": 0.0,
+      "max": 1.0,
       "step": 0.01,
-      "defaultValue": 0.15
+      "defaultValue": 0.6,
+      "description": "Position verticale du soleil."
+    },
+    {
+      "name": "Douceur des couleurs",
+      "variableName": "slider_colorEffectStrength",
+      "min": 0.0,
+      "max": 2.0,
+      "step": 0.01,
+      "defaultValue": 1.0,
+      "description": "Intensité des liserés colorés de la route."
     }
   ],
   "uniforms": {
-    "slider_cameraXRotation": 0,
-    "slider_zoom": 3.95,
-    "slider_fractalScale": 0.37,
-    "slider_fractalRotation": 1.09,
-    "slider_brightness": 4.25,
-    "slider_maxIterations": 115,
-    "slider_colorEffectStrength": 1.9,
-    "slider_fractalPulseStrength": 0,
-    "slider_atmosphereDensity": 0.08,
-    "slider_sunElevation": 0.15
+    "slider_zoom": 1.2,
+    "slider_brightness": 1.05,
+    "slider_atmosphereDensity": 0.35,
+    "slider_sunElevation": 0.6,
+    "slider_colorEffectStrength": 1.0
   },
   "cameraControlsEnabled": true,
   "terraformConfig": {
@@ -131,7 +89,7 @@
   },
   "soundConfig": {
     "enabled": true,
-    "masterVolume": 0.5,
+    "masterVolume": 0.35,
     "reverb": {
       "enabled": true,
       "mix": 0.65,
