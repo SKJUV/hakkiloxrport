@@ -170,6 +170,13 @@ export const defaultContent: SiteContent = {
         'Ajustement IPD motorisé',
       ],
       inStock: true,
+      variants: [
+        { name: 'Graphite', color: '#3a3f4a' },
+        { name: 'Menthe', color: '#8fd6c4' },
+        { name: 'Lavande', color: '#b7a8e8' },
+      ],
+      rating: 4.8,
+      reviews: 214,
     },
     {
       id: 'spectra',
@@ -194,6 +201,12 @@ export const defaultContent: SiteContent = {
         'Verres correcteurs en option',
       ],
       inStock: true,
+      variants: [
+        { name: 'Cristal', color: '#bfe9df' },
+        { name: 'Ambre', color: '#f3c9a8' },
+      ],
+      rating: 4.5,
+      reviews: 132,
     },
     {
       id: 'neogrip',
@@ -214,6 +227,12 @@ export const defaultContent: SiteContent = {
       compat: ['Vortex AR-1', 'Spectra', 'WebXR'],
       features: ['Suivi sub-millimétrique', 'Recharge sans fil', 'Sangles adaptatives'],
       inStock: true,
+      variants: [
+        { name: 'Noir', color: '#2a2e36' },
+        { name: 'Sable', color: '#f3c9a8' },
+      ],
+      rating: 4.6,
+      reviews: 88,
     },
   ],
   courses: [
@@ -239,6 +258,10 @@ export const defaultContent: SiteContent = {
       ],
       price: 149,
       certifying: true,
+      instructor: { name: 'Camille Royer', role: 'Ingénieure VR' },
+      prerequisites: ['Bases de Python', 'Notions de 3D'],
+      rating: 4.7,
+      students: 1280,
     },
     {
       id: 'glsl',
@@ -262,6 +285,10 @@ export const defaultContent: SiteContent = {
       ],
       price: 199,
       certifying: true,
+      instructor: { name: 'Yanis Lefort', role: 'Graphics Engineer' },
+      prerequisites: ['Maths vectorielles', 'Bases WebGL'],
+      rating: 4.9,
+      students: 940,
     },
     {
       id: 'ux-spatial',
@@ -285,6 +312,10 @@ export const defaultContent: SiteContent = {
       ],
       price: 99,
       certifying: false,
+      instructor: { name: 'Inès Moreau', role: 'Spatial UX Designer' },
+      prerequisites: ['Aucun prérequis'],
+      rating: 4.4,
+      students: 2100,
     },
   ],
   contact: {
@@ -297,6 +328,8 @@ export const defaultContent: SiteContent = {
     address: 'Paris, France',
     responseTime: 'Réponse sous 24 h',
     bookingNote: 'Démo sur site ou en visio',
+    needs: ['Démonstration', 'Devis', 'Formation équipe', 'Partenariat'],
+    slots: ['09:00', '10:30', '14:00', '15:30', '17:00'],
   },
   admin: {
     passphrase: 'aetheris',

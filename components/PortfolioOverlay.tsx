@@ -71,6 +71,28 @@ const previewEffects: Record<string, (set: (k: string, v: number) => void) => vo
   neogrip: (set) => { set('slider_atmosphereDensity', 0.12); set('slider_brightness', 1.2); },
 };
 
+/* deep-link immersion : ?z=shop | p.vortex | c.glsl */
+const encodeTarget = (t: ImmersionTarget): string => {
+  if (!t) return '';
+  if (t.type === 'product') return `p.${t.id}`;
+  if (t.type === 'course') return `c.${t.id}`;
+  return t.id; // section : id de l'étape (start/shop/learn/contact)
+};
+const decodeTarget = (z: string): ImmersionTarget => {
+  if (!z) return null;
+  if (z.startsWith('p.')) return { type: 'product', id: z.slice(2) };
+  if (z.startsWith('c.')) return { type: 'course', id: z.slice(2) };
+  return { type: 'section', id: z };
+};
+const writeImmersionUrl = (t: ImmersionTarget) => {
+  try {
+    const url = new URL(window.location.href);
+    const z = encodeTarget(t);
+    if (z) url.searchParams.set('z', z); else url.searchParams.delete('z');
+    window.history.replaceState(null, '', url.toString());
+  } catch { /* ignore */ }
+};
+
 export const PortfolioOverlay: React.FC = () => {
   const {
     portfolioScroll,
@@ -92,9 +114,7 @@ export const PortfolioOverlay: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [checkoutStep, setCheckoutStep] = useState<'cart' | 'purchasing' | 'success'>('cart');
   const [immersion, setImmersion] = useState<ImmersionTarget>(null);
-  const [scannerUnlocked, setScannerUnlocked] = useState(false);
-  const [contactForm, setContactForm] = useState({ company: '', email: '', slot: '' });
-  const [contactSent, setContactSent] = useState(false);
+  const [immersionRect, setImmersionRect] = useState<DOMRect | null>(null);
 
   // panier initial : premier produit en stock
   useEffect(() => {
@@ -107,6 +127,13 @@ export const PortfolioOverlay: React.FC = () => {
       setMousePos({ x: (e.clientX / window.innerWidth) * 2 - 1, y: (e.clientY / window.innerHeight) * 2 - 1 });
     window.addEventListener('mousemove', onMove);
     return () => window.removeEventListener('mousemove', onMove);
+  }, []);
+
+  // Ouverture par lien direct (?z=…)
+  useEffect(() => {
+    const z = new URLSearchParams(window.location.search).get('z');
+    const t = decodeTarget(z || '');
+    if (t) setImmersion(t);
   }, []);
 
   const activeIdx = useMemo(() => {
@@ -131,18 +158,18 @@ export const PortfolioOverlay: React.FC = () => {
     if (total > 0) el.scrollTo({ top: progress * total, behavior: 'smooth' });
   };
 
-  /* immersion : plongée vers le contenu détaillé d'une zone/objet */
-  const openImmersion = (t: ImmersionTarget) => {
+  /* immersion : plongée cinématique vers le contenu détaillé */
+  const openImmersion = (t: NonNullable<ImmersionTarget>, e?: React.MouseEvent) => {
     chirp(760, 'sine', 0.18);
-    handleUniformChange('slider_zoom', 1.65); // léger zoom cinématique
-    handleUniformsCommit?.();
+    setImmersionRect(e ? (e.currentTarget as HTMLElement).getBoundingClientRect() : null);
     setImmersion(t);
+    writeImmersionUrl(t);
   };
   const closeImmersion = () => {
     chirp(420, 'sine', 0.12);
-    handleUniformChange('slider_zoom', 1.2);
-    handleUniformsCommit?.();
     setImmersion(null);
+    setImmersionRect(null);
+    writeImmersionUrl(null);
   };
 
   const handleFreeFlight = () => {
@@ -178,14 +205,6 @@ export const PortfolioOverlay: React.FC = () => {
     setTimeout(() => { setCheckoutStep('success'); chirpSuccess(); }, 1500);
   };
 
-  /* contact */
-  const handleContactSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!contactForm.company.trim() || !contactForm.email.trim()) return;
-    chirpSuccess();
-    setContactSent(true);
-  };
-
   /* style des panneaux (verre doux) */
   const blur = Math.round(theme.glass * 22);
   const panel = (accent: string): React.CSSProperties => ({
@@ -197,18 +216,32 @@ export const PortfolioOverlay: React.FC = () => {
     boxShadow: `0 14px 48px rgba(0,0,0,0.34), 0 0 ${Math.round(46 * theme.glowIntensity)}px ${withAlpha(accent, 0.16)}`,
   });
 
-  const getCardStyle = (idx: number): React.CSSProperties => {
+  // Côté de la route : -1 = gauche, +1 = droite, 0 = centré (départ).
+  // On suit le sens du virage, sinon on alterne par position.
+  const stepSide = (step: (typeof journey)[number], idx: number): number => {
+    if (step.key === 'start') return 0;
+    if (step.turn < 0) return -1;
+    if (step.turn > 0) return 1;
+    return idx % 2 === 0 ? -1 : 1;
+  };
+
+  const getCardStyle = (idx: number, side: number): React.CSSProperties => {
     const step = journey[idx];
     const d = portfolioScroll - step.center;
     const win = idx === 0 ? 0.17 : idx === journey.length - 1 ? 0.2 : 0.16;
     const opacity = Math.max(0, Math.min(1, 1 - Math.abs(d) / win));
-    const tiltX = -mousePos.y * 5;
-    const tiltY = mousePos.x * 6;
+    const tiltX = -mousePos.y * 4;
+    const tiltY = mousePos.x * 5;
+    const baseX = side === 0 ? '-50%' : '0px';
+    const horizontal: React.CSSProperties =
+      side === 0 ? { left: '50%' } : side < 0 ? { left: '2vw' } : { right: '2vw' };
     return {
-      transform: `perspective(1400px) rotateX(${tiltX}deg) rotateY(${tiltY}deg) translateY(${-d * 120}px) scale(${0.94 + opacity * 0.06})`,
+      ...horizontal,
+      top: '50%',
+      transform: `perspective(1400px) rotateX(${tiltX}deg) rotateY(${tiltY}deg) translateX(${baseX}) translateY(calc(-50% + ${-d * 120}px)) scale(${0.94 + opacity * 0.06})`,
       transformStyle: 'preserve-3d',
       opacity,
-      transition: 'transform 0.2s cubic-bezier(0.25,1,0.5,1), opacity 0.35s ease-out',
+      transition: 'transform 0.2s cubic-bezier(0.25,1,0.5,1), opacity 0.35s ease-out, left 0.4s ease, right 0.4s ease',
       pointerEvents: activeIdx === idx && opacity > 0.45 ? 'auto' : 'none',
     };
   };
@@ -220,14 +253,25 @@ export const PortfolioOverlay: React.FC = () => {
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_46%,rgba(12,15,22,0.66)_100%)]" />
       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20" />
 
-      {/* ligne directrice douce au sol */}
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-x-0 bottom-0 h-[44vh] w-full z-[5] pointer-events-none transition-opacity duration-700" style={{ opacity: 0.4 }}>
-        <line x1="50" y1="0" x2="24" y2="100" stroke={activeAccent} strokeWidth="0.18" opacity="0.45" />
-        <line x1="50" y1="0" x2="76" y2="100" stroke={activeAccent} strokeWidth="0.18" opacity="0.45" />
-        <line x1="50" y1="3" x2="50" y2="100" stroke={activeAccent} strokeWidth="0.45" className="ar-dash-stream" opacity="0.7" />
-        {[30, 50, 72].map((y, i) => {
-          const spread = (y / 100) * 22 + 2;
-          return <polyline key={i} points={`${50 - spread},${y - 3} 50,${y} ${50 + spread},${y - 3}`} fill="none" stroke={activeAccent} strokeWidth="0.32" opacity={0.2 + (y / 100) * 0.4} />;
+      {/* guide au sol : tronc + embranchements (branches sur la route) */}
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-x-0 bottom-0 h-[44vh] w-full z-[5] pointer-events-none transition-opacity duration-700" style={{ opacity: 0.38 }}>
+        {/* route mince (tronc) */}
+        <line x1="50" y1="2" x2="50" y2="100" stroke={activeAccent} strokeWidth="0.28" className="ar-dash-stream" opacity="0.72" />
+        {/* branches latérales alternées */}
+        {[18, 34, 50, 66, 82].map((y, i) => {
+          const dir = i % 2 === 0 ? -1 : 1;
+          const reach = 7 + (y / 100) * 18;
+          const tipX = 50 + dir * reach;
+          const tipY = y - 7;
+          const op = 0.22 + (y / 100) * 0.4;
+          return (
+            <g key={i}>
+              <line x1="50" y1={y} x2={tipX} y2={tipY} stroke={activeAccent} strokeWidth="0.24" opacity={op} />
+              {/* petite ramification (feuille) */}
+              <line x1={tipX} y1={tipY} x2={tipX + dir * 3.5} y2={tipY - 3.5} stroke={activeAccent} strokeWidth="0.2" opacity={op * 0.8} />
+              <line x1={(50 + tipX) / 2} y1={(y + tipY) / 2} x2={(50 + tipX) / 2 + dir * 2.5} y2={(y + tipY) / 2 + 2.5} stroke={activeAccent} strokeWidth="0.18" opacity={op * 0.6} />
+            </g>
+          );
         })}
       </svg>
 
@@ -262,11 +306,19 @@ export const PortfolioOverlay: React.FC = () => {
         </div>
       </div>
 
-      {/* cartes des actes */}
-      <div className="absolute inset-0 flex items-center justify-center md:justify-start px-4 md:px-20 pointer-events-none">
+      {/* cartes des actes — sur le bord de la route, alternées gauche/droite */}
+      <div className="absolute inset-0 pointer-events-none">
 
-        {journey.map((step, idx) => (
-          <div key={step.id} className={`absolute w-full ${step.key === 'shop' || step.key === 'learn' ? 'max-w-5xl' : step.key === 'contact' ? 'max-w-3xl flex flex-col items-center text-center' : 'max-w-xl md:max-w-2xl flex flex-col items-center md:items-start text-center md:text-left'}`} style={getCardStyle(idx)}>
+        {journey.map((step, idx) => {
+          const side = stepSide(step, idx);
+          const widthCls =
+            side === 0
+              ? 'w-[92vw] max-w-2xl flex flex-col items-center md:items-start text-center md:text-left'
+              : step.key === 'shop' || step.key === 'learn'
+                ? 'w-[92vw] md:w-[48vw] max-w-2xl'
+                : 'w-[92vw] md:w-[40vw] max-w-md ' + (step.key === 'contact' ? 'flex flex-col items-center text-center' : '');
+          return (
+          <div key={step.id} className={`absolute ${widthCls}`} style={getCardStyle(idx, side)}>
             <ScanReveal active={activeIdx === idx} color={step.accent} radius={theme.radius} />
 
             {/* ----- HERO (start / générique) ----- */}
@@ -284,7 +336,7 @@ export const PortfolioOverlay: React.FC = () => {
                     <button onClick={() => teleportTo(journey[Math.min(idx + 1, journey.length - 1)].center)} className="px-6 py-3 rounded-2xl font-semibold text-xs tracking-wider uppercase transition-transform hover:scale-105 active:scale-95 flex items-center gap-2" style={{ background: `linear-gradient(90deg, ${colors.accent}, ${colors.secondary})`, color: colors.background, boxShadow: `0 0 24px ${withAlpha(step.accent, 0.35)}` }}>
                       {ui.startCta} <ArrowRight className="w-4 h-4" />
                     </button>
-                    <button onClick={() => openImmersion({ type: 'section', id: step.id })} className="px-5 py-3 rounded-2xl font-semibold text-xs tracking-wider uppercase transition-transform hover:scale-105 active:scale-95 flex items-center gap-2 border" style={{ borderColor: withAlpha(step.accent, 0.5), color: step.accent, background: withAlpha(step.accent, 0.1) }}>
+                    <button onClick={(e) => openImmersion({ type: 'section', id: step.id }, e)} className="px-5 py-3 rounded-2xl font-semibold text-xs tracking-wider uppercase transition-transform hover:scale-105 active:scale-95 flex items-center gap-2 border" style={{ borderColor: withAlpha(step.accent, 0.5), color: step.accent, background: withAlpha(step.accent, 0.1) }}>
                       <Search className="w-4 h-4" /> En savoir plus
                     </button>
                     <div className="flex items-center gap-2 text-[10px]" style={{ color: colors.textMuted }}>
@@ -313,7 +365,7 @@ export const PortfolioOverlay: React.FC = () => {
                         <Icon name={step.icon} className="w-5 h-5" style={{ color: step.accent }} /> {step.headline}
                       </h2>
                     </div>
-                    <button onClick={() => openImmersion({ type: 'section', id: step.id })} className="self-start md:self-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] uppercase tracking-wider font-bold border transition active:scale-95" style={{ borderColor: withAlpha(step.accent, 0.5), color: step.accent, background: withAlpha(step.accent, 0.1) }}>
+                    <button onClick={(e) => openImmersion({ type: 'section', id: step.id }, e)} className="self-start md:self-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] uppercase tracking-wider font-bold border transition active:scale-95" style={{ borderColor: withAlpha(step.accent, 0.5), color: step.accent, background: withAlpha(step.accent, 0.1) }}>
                       <Search className="w-3.5 h-3.5" /> Découvrir la zone
                     </button>
                   </div>
@@ -323,23 +375,23 @@ export const PortfolioOverlay: React.FC = () => {
                     {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 flex items-center pr-3" style={{ color: colors.textMuted }}><X className="w-3.5 h-3.5" /></button>}
                   </div>
 
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-                    <div className="lg:col-span-8 grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {filteredProducts.length === 0 ? (
-                        <div className="md:col-span-3 flex flex-col items-center justify-center p-8 rounded-xl text-center gap-2" style={{ background: 'rgba(0,0,0,0.2)', border: `1px dashed ${colors.border}`, color: colors.textMuted }}>
+                        <div className="sm:col-span-2 lg:col-span-3 flex flex-col items-center justify-center p-8 rounded-xl text-center gap-2" style={{ background: 'rgba(0,0,0,0.2)', border: `1px dashed ${colors.border}`, color: colors.textMuted }}>
                           <Search className="w-5 h-5" style={{ color: step.accent }} />
                           <p className="text-xs">Aucun produit ne correspond.</p>
                           <button onClick={() => setSearchQuery('')} className="px-3 py-1.5 text-[9px] uppercase tracking-wider rounded-lg border" style={{ borderColor: step.accent, color: step.accent }}>Réinitialiser</button>
                         </div>
                       ) : (
                         filteredProducts.map((product) => (
-                          <ProductCard key={product.id} product={product} accent={step.accent} colors={colors} currency={currency} inCart={cart.includes(product.id)} expanded={expandedProduct === product.id} onToggleSpecs={() => { chirp(700, 'sine', 0.08); setExpandedProduct(expandedProduct === product.id ? null : product.id); }} onPreview={() => previewProduct(product.id)} onToggleCart={() => toggleCart(product.id)} onOpen={() => openImmersion({ type: 'product', id: product.id })} />
+                          <ProductCard key={product.id} product={product} accent={step.accent} colors={colors} currency={currency} inCart={cart.includes(product.id)} expanded={expandedProduct === product.id} onToggleSpecs={() => { chirp(700, 'sine', 0.08); setExpandedProduct(expandedProduct === product.id ? null : product.id); }} onPreview={() => previewProduct(product.id)} onToggleCart={() => toggleCart(product.id)} onOpen={(e) => openImmersion({ type: 'product', id: product.id }, e)} />
                         ))
                       )}
                     </div>
 
                     {/* panier */}
-                    <div className="lg:col-span-4 rounded-xl p-3.5 flex flex-col justify-between text-[10.5px]" style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${colors.border}` }}>
+                    <div className="rounded-xl p-3.5 text-[10.5px]" style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${colors.border}` }}>
                       <div className="space-y-3">
                         <div className="flex justify-between items-center text-[9px] border-b pb-1.5 font-bold" style={{ borderColor: colors.border, color: colors.textMuted }}>
                           <span className="flex items-center gap-1.5"><Package className="w-3.5 h-3.5" style={{ color: step.accent }} /> Panier</span>
@@ -392,13 +444,13 @@ export const PortfolioOverlay: React.FC = () => {
                       </h2>
                       <p className="text-[11px] mt-1" style={{ color: colors.textMuted }}>{step.intro}</p>
                     </div>
-                    <button onClick={() => openImmersion({ type: 'section', id: step.id })} className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] uppercase tracking-wider font-bold border transition active:scale-95" style={{ borderColor: withAlpha(step.accent, 0.5), color: step.accent, background: withAlpha(step.accent, 0.1) }}>
+                    <button onClick={(e) => openImmersion({ type: 'section', id: step.id }, e)} className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] uppercase tracking-wider font-bold border transition active:scale-95" style={{ borderColor: withAlpha(step.accent, 0.5), color: step.accent, background: withAlpha(step.accent, 0.1) }}>
                       <Search className="w-3.5 h-3.5" /> Découvrir la zone
                     </button>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {courses.map((course) => (
-                      <CourseCard key={course.id} course={course} colors={colors} onPlay={() => openImmersion({ type: 'course', id: course.id })} />
+                      <CourseCard key={course.id} course={course} colors={colors} onPlay={(e) => openImmersion({ type: 'course', id: course.id }, e)} />
                     ))}
                   </div>
                 </div>
@@ -423,42 +475,10 @@ export const PortfolioOverlay: React.FC = () => {
                     <p className="text-xs mt-3 max-w-xl mx-auto leading-relaxed" style={{ color: colors.textMuted }}>{contact.pitch}</p>
                   </div>
 
-                  {!scannerUnlocked ? (
-                    <button onClick={() => { chirpSuccess(); setScannerUnlocked(true); }} className="ar-unlock-glow group px-8 py-4 rounded-2xl font-bold text-sm tracking-wider uppercase transition-transform hover:scale-105 active:scale-95 flex items-center gap-3 mx-auto" style={{ background: `linear-gradient(90deg, ${colors.accent}, ${colors.secondary})`, color: colors.background }}>
-                      <ScanLine className="w-5 h-5" /> {contact.unlockLabel} <Unlock className="w-4 h-4 opacity-80" />
-                    </button>
-                  ) : (
-                    <div className="rounded-2xl p-5 text-left" style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${withAlpha(step.accent, 0.4)}` }}>
-                      {contactSent ? (
-                        <div className="flex flex-col items-center text-center gap-2 py-4">
-                          <ShieldCheck className="w-10 h-10" style={{ color: colors.success }} />
-                          <p className="text-sm font-bold">Demande transmise, {contactForm.company || 'partenaire'} !</p>
-                          <p className="text-xs" style={{ color: colors.textMuted }}>Notre agence revient vers vous. {contact.responseTime}.</p>
-                        </div>
-                      ) : (
-                        <form onSubmit={handleContactSubmit} className="space-y-3">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <label className="flex flex-col gap-1 text-[10px]" style={{ color: colors.textMuted }}>
-                              <span className="flex items-center gap-1"><Building2 className="w-3 h-3" style={{ color: step.accent }} /> Entreprise</span>
-                              <input required value={contactForm.company} onChange={(e) => setContactForm({ ...contactForm, company: e.target.value })} placeholder="Votre société" className="rounded-lg px-3 py-2 text-xs outline-none" style={{ background: 'rgba(0,0,0,0.3)', border: `1px solid ${colors.border}`, color: colors.text }} />
-                            </label>
-                            <label className="flex flex-col gap-1 text-[10px]" style={{ color: colors.textMuted }}>
-                              <span className="flex items-center gap-1"><Send className="w-3 h-3" style={{ color: step.accent }} /> Email pro</span>
-                              <input required type="email" value={contactForm.email} onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })} placeholder="vous@entreprise.com" className="rounded-lg px-3 py-2 text-xs outline-none" style={{ background: 'rgba(0,0,0,0.3)', border: `1px solid ${colors.border}`, color: colors.text }} />
-                            </label>
-                          </div>
-                          <label className="flex flex-col gap-1 text-[10px]" style={{ color: colors.textMuted }}>
-                            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" style={{ color: step.accent }} /> Créneau souhaité</span>
-                            <input value={contactForm.slot} onChange={(e) => setContactForm({ ...contactForm, slot: e.target.value })} placeholder="ex. mardi 14h…" className="rounded-lg px-3 py-2 text-xs outline-none" style={{ background: 'rgba(0,0,0,0.3)', border: `1px solid ${colors.border}`, color: colors.text }} />
-                          </label>
-                          <button type="submit" className="w-full px-4 py-3 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition active:scale-95" style={{ background: `linear-gradient(90deg, ${colors.accent}, ${colors.secondary})`, color: colors.background }}>
-                            <Calendar className="w-4 h-4" /> Programmer la démonstration
-                          </button>
-                          <p className="flex items-center justify-center gap-1.5 text-[9px]" style={{ color: colors.textMuted }}><MapPin className="w-3 h-3" /> {contact.bookingNote} · {contact.responseTime}</p>
-                        </form>
-                      )}
-                    </div>
-                  )}
+                  <button onClick={(e) => { chirpSuccess(); openImmersion({ type: 'section', id: step.id }, e); }} className="ar-unlock-glow group px-8 py-4 rounded-2xl font-bold text-sm tracking-wider uppercase transition-transform hover:scale-105 active:scale-95 flex items-center gap-3 mx-auto" style={{ background: `linear-gradient(90deg, ${colors.accent}, ${colors.secondary})`, color: colors.background }}>
+                    <ScanLine className="w-5 h-5" /> {contact.unlockLabel} <Unlock className="w-4 h-4 opacity-80" />
+                  </button>
+                  <p className="flex items-center justify-center gap-1.5 text-[9px]" style={{ color: colors.textMuted }}><MapPin className="w-3 h-3" /> {contact.bookingNote} · {contact.responseTime}</p>
                   <button onClick={() => teleportTo(0)} className="flex items-center gap-1.5 text-[10px] mx-auto transition-colors hover:opacity-80" style={{ color: colors.textMuted }}>
                     <ArrowRight className="w-3 h-3 rotate-180" /> Revenir au départ
                   </button>
@@ -466,12 +486,14 @@ export const PortfolioOverlay: React.FC = () => {
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* vue d'immersion (section / produit / cours) */}
       <ImmersionView
         target={immersion}
+        originRect={immersionRect}
         onClose={closeImmersion}
         onTeleport={teleportTo}
         onToggleCart={toggleCart}
@@ -526,7 +548,7 @@ const ProductCard: React.FC<{
   onToggleSpecs: () => void;
   onPreview: () => void;
   onToggleCart: () => void;
-  onOpen: () => void;
+  onOpen: (e: React.MouseEvent) => void;
 }> = ({ product, accent, colors, currency, inCart, expanded, onToggleSpecs, onPreview, onToggleCart, onOpen }) => (
   <div className="relative rounded-xl p-3.5 flex flex-col justify-between transition-all duration-300 group" style={{ background: 'rgba(0,0,0,0.26)', border: `1px solid ${colors.border}` }}>
     <button onClick={onOpen} title="Ouvrir la fiche détaillée" className="relative flex items-center justify-center h-20 mb-2 w-full cursor-pointer">
@@ -558,7 +580,7 @@ const ProductCard: React.FC<{
   </div>
 );
 
-const CourseCard: React.FC<{ course: Course; colors: any; onPlay: () => void }> = ({ course, colors, onPlay }) => (
+const CourseCard: React.FC<{ course: Course; colors: any; onPlay: (e: React.MouseEvent) => void }> = ({ course, colors, onPlay }) => (
   <div className="relative rounded-xl p-4 flex flex-col justify-between transition-all duration-300 group overflow-hidden" style={{ background: 'rgba(0,0,0,0.26)', border: `1px solid ${colors.border}`, boxShadow: `inset 0 0 30px ${withAlpha(course.accent, 0.08)}` }}>
     <div className="relative flex items-center justify-center h-16 mb-2">
       <span className="absolute w-14 h-14 rounded-full border ar-target-pulse" style={{ borderColor: withAlpha(course.accent, 0.5) }} />

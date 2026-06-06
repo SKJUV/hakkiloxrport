@@ -56,6 +56,11 @@ export interface ProductSpec {
   icon: string;
 }
 
+export interface ProductVariant {
+  name: string;
+  color: string; // teinte d'aperçu (#hex)
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -70,11 +75,19 @@ export interface Product {
   compat: string[];
   features: string[];
   inStock: boolean;
+  variants?: ProductVariant[];
+  rating?: number;  // 0..5
+  reviews?: number; // nombre d'avis
 }
 
 export interface CourseModule {
   title: string;
   duration: string;
+}
+
+export interface CourseInstructor {
+  name: string;
+  role: string;
 }
 
 export interface Course {
@@ -90,6 +103,10 @@ export interface Course {
   modules: CourseModule[];
   price?: number;
   certifying: boolean;
+  instructor?: CourseInstructor;
+  prerequisites?: string[];
+  rating?: number;   // 0..5
+  students?: number; // nombre d'inscrits
 }
 
 export interface ContactInfo {
@@ -101,6 +118,10 @@ export interface ContactInfo {
   address: string;
   responseTime: string;
   bookingNote: string;
+  /** Créneaux horaires proposés dans le mini-calendrier d'immersion. */
+  slots?: string[];
+  /** Types de demande proposés à l'étape 1 du flux de contact. */
+  needs?: string[];
 }
 
 export interface SiteMeta {
